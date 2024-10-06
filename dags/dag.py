@@ -2,13 +2,11 @@ import io
 import json
 import time
 import logging
-# import numpy as np
-# import os
-import pandas as pd
 import pickle
+import pandas as pd
 
 from typing import Any, Dict, Literal
-from datetime import datetime, timedelta
+from datetime import timedelta
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.tree import DecisionTreeRegressor
@@ -18,7 +16,6 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.datasets import fetch_california_housing
 
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
-# from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.models import DAG, Variable
 from airflow.operators.python_operator import PythonOperator
 from airflow.utils.dates import days_ago
