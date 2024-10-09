@@ -213,13 +213,14 @@ def create_dag(dag_id: str, m_name: Literal["random_forest", "linear_regression"
 
         _LOG.info(f"METRICS save_results: {metrics}")
 
-        model_metrics = metrics["model_metrics"]
+        # model_metrics = metrics["model_metrics"]
 
         model_name = metrics["model_name"]
 
+
         s3_hook = S3Hook("s3_connection")
         buffer = io.BytesIO()
-        buffer.write(json.dumps(model_metrics).encode())
+        buffer.write(json.dumps(metrics).encode())
         buffer.seek(0)
         s3_hook.load_file_obj(
             file_obj=buffer,
