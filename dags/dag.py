@@ -89,7 +89,7 @@ def create_dag(dag_id: str, m_name: Literal["random_forest", "linear_regression"
         # Объединим фичи и таргет в один np.array
         data = pd.concat([housing["data"], pd.DataFrame(housing["target"])], axis=1)
         # Использовать созданный ранее S3 connection
-        s3_hook = S3Hook("s3_connection_yandex")
+        s3_hook = S3Hook("s3_connection")
         filebuffer = io.BytesIO()
         data.to_pickle(filebuffer)
         filebuffer.seek(0)
@@ -120,7 +120,7 @@ def create_dag(dag_id: str, m_name: Literal["random_forest", "linear_regression"
         model_name = kwargs["model_name"]
 
         # Использовать созданный ранее S3 connection
-        s3_hook = S3Hook("s3_connection_yandex")
+        s3_hook = S3Hook("s3_connection")
         file = s3_hook.download_file(key=f"Ivan_Yuminov/{model_name}/datasets/california_housing.pkl", bucket_name=BUCKET)
         data = pd.read_pickle(file)
 
@@ -174,7 +174,7 @@ def create_dag(dag_id: str, m_name: Literal["random_forest", "linear_regression"
         start_time = time.time()
         model_name = kwargs["model_name"]
         # Использовать созданный ранее S3 connection
-        s3_hook = S3Hook("s3_connection_yandex")
+        s3_hook = S3Hook("s3_connection")
         # Загрузить готовые данные с S3
         data = {}
         for name in ["X_train", "X_test", "y_train", "y_test"]:
@@ -217,7 +217,7 @@ def create_dag(dag_id: str, m_name: Literal["random_forest", "linear_regression"
 
         model_name = metrics["model_name"]
 
-        s3_hook = S3Hook("s3_connection_yandex")
+        s3_hook = S3Hook("s3_connection")
         buffer = io.BytesIO()
         buffer.write(json.dumps(model_metrics).encode())
         buffer.seek(0)
