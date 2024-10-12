@@ -1,6 +1,6 @@
 import io
 import json
-import time
+import datetime
 import logging
 import pickle
 import pandas as pd
@@ -38,7 +38,6 @@ TARGET = "MedHouseVal"
 
 DEFAULT_ARGS = {
     "owner": "Ivan_Yuminov",
-    "email" : "marley@example.com",
     "email_on_failure" : True,
     "email_on_retry" : False,
     "retry" : 3,
@@ -46,6 +45,7 @@ DEFAULT_ARGS = {
 }
 
 model_names = ["random_forest", "linear_regression", "desicion_tree"]
+
 models = dict(
     zip(model_names, [
         RandomForestRegressor(),
@@ -65,10 +65,12 @@ def create_dag(dag_id: str, m_name: Literal["random_forest", "linear_regression"
 
 
     def init(m_name: Literal["random_forest", "linear_regression", "desicion_tree"]) -> Dict[str, Any]:
+
         metrics = {}
+        metrics["init_time"] = datetime.datetime.now().strftime("%d-%m-%Y %H:%M")
         metrics["model_name"] = m_name
 
-        _LOG.info(f"Train pipeline started for {metrics['model_name']}")
+        _LOG.info(f"Train pipeline started at {metrics['init_time']} for {metrics['model_name']}")
         
         return metrics
 
@@ -80,9 +82,7 @@ def create_dag(dag_id: str, m_name: Literal["random_forest", "linear_regression"
         metrics = task_instance.xcom_pull(task_ids='init')
 
         model_name = metrics["model_name"]
-        _LOG.info(f"Name model: {model_name}")
-
-        start_time = time.time()
+        metrics['start_get_data'] = datetime.datetime.now().strftime("%d-%m-%Y %H:%M:%S")
 
         # Получим датасет California housing
         housing = fetch_california_housing(as_frame=True)
@@ -102,9 +102,10 @@ def create_dag(dag_id: str, m_name: Literal["random_forest", "linear_regression"
             replace=True,
         )
 
-        end_time = time.time()
-        metrics["loading_time"] = end_time - start_time
-        _LOG.info(f"Data loaded. Loading time : {metrics['loading_time']}")
+        metrics['finish_get_data'] = datetime.datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+        metrics['data_shape'] = data.shape
+
+        _LOG.info("Data loaded.")
 
         return metrics
 
@@ -113,16 +114,14 @@ def create_dag(dag_id: str, m_name: Literal["random_forest", "linear_regression"
 
         task_instance = kwargs["task_instance"]
         metrics = task_instance.xcom_pull(task_ids= "get_data_from_sklearn")
-
-        _LOG.info(f"METRICS prepare_data: {metrics}")
-
-        start_time = time.time()
         model_name = kwargs["model_name"]
+        metrics['start_prepare_data'] = datetime.datetime.now().strftime("%d-%m-%Y %H:%M:%S")
 
         # Использовать созданный ранее S3 connection
         s3_hook = S3Hook("s3_connection")
         file = s3_hook.download_file(key=f"Ivan_Yuminov/{model_name}/datasets/california_housing.pkl", bucket_name=BUCKET)
         data = pd.read_pickle(file)
+        
 
         # Сделать препроцессинг
         # Разделить на фичи и таргет
@@ -143,12 +142,12 @@ def create_dag(dag_id: str, m_name: Literal["random_forest", "linear_regression"
         X_train_fitted = scaler.fit_transform(X_train)
         X_test_fitted = scaler.transform(X_test)
 
-        for name, data in zip(
+        for name, dt in zip(
             ["X_train", "X_test", "y_train", "y_test"],
             [X_train_fitted, X_test_fitted, y_train, y_test],
         ):
             filebuffer = io.BytesIO()
-            pickle.dump(data, filebuffer)
+            pickle.dump(dt, filebuffer)
             filebuffer.seek(0)
             s3_hook.load_file_obj(
                 file_obj=filebuffer,
@@ -157,9 +156,9 @@ def create_dag(dag_id: str, m_name: Literal["random_forest", "linear_regression"
                 replace=True,
             )
 
-        end_time = time.time()
-        metrics["preproces_time"] = end_time - start_time
-        _LOG.info(f"Preprocessing time: {metrics['preproces_time']}")
+        metrics['finish_prepare_data'] = datetime.datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+        metrics['features_data'] = data[FEATURES].columns.to_list()
+        _LOG.info("Preprocessing finished.")
         return metrics
 
 
@@ -168,10 +167,8 @@ def create_dag(dag_id: str, m_name: Literal["random_forest", "linear_regression"
         task_instance = kwargs["task_instance"]
         metrics = task_instance.xcom_pull(task_ids="prepare_data")
 
-        _LOG.info(f"METRICS train_model: {metrics}")
+        metrics['start_train_model'] = datetime.datetime.now().strftime("%d-%m-%Y %H:%M:%S")
 
-    
-        start_time = time.time()
         model_name = kwargs["model_name"]
         # Использовать созданный ранее S3 connection
         s3_hook = S3Hook("s3_connection")
@@ -187,6 +184,9 @@ def create_dag(dag_id: str, m_name: Literal["random_forest", "linear_regression"
         # Обучить модель
         model = models[model_name]
         model.fit(data["X_train"], data["y_train"])
+
+        metrics['finish_train_model'] = datetime.datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+
         prediction = model.predict(data["X_test"])
 
         # Посчитать метрики
@@ -194,29 +194,18 @@ def create_dag(dag_id: str, m_name: Literal["random_forest", "linear_regression"
         result["r2_score"] = r2_score(data["y_test"], prediction)
         result["rmse"] = mean_squared_error(data["y_test"], prediction) ** 0.5
         result["mae"] = median_absolute_error(data["y_test"], prediction)
-
         metrics["model_metrics"] = result
 
-        end_time = time.time()
-
-        metrics["training_time"] = end_time - start_time
-        
         _LOG.info(f"Model trained. Metrics: {metrics['model_metrics']}")
-        _LOG.info(f"Training time: {metrics['training_time']}")
 
         return metrics
 
     def save_results(**kwargs) -> None:
 
-        ti = kwargs["ti"]
-        metrics = ti.xcom_pull(task_ids="train_model")
-
-        _LOG.info(f"METRICS save_results: {metrics}")
-
-        # model_metrics = metrics["model_metrics"]
+        task_instance = kwargs["task_instance"]
+        metrics = task_instance.xcom_pull(task_ids="train_model")
 
         model_name = metrics["model_name"]
-
 
         s3_hook = S3Hook("s3_connection")
         buffer = io.BytesIO()
@@ -229,7 +218,7 @@ def create_dag(dag_id: str, m_name: Literal["random_forest", "linear_regression"
             replace=True
             )
         
-        _LOG.info("Success.")
+        _LOG.info("Saving results successfully. Pipeline finished.")
 
 
     with dag:
