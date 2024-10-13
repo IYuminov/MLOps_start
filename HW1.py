@@ -136,12 +136,7 @@ def create_dag(dag_id: str, m_name: Literal["random_forest", "linear_regression"
         scaler = StandardScaler()
         X_train_fitted = scaler.fit_transform(X_train)
         X_test_fitted = scaler.transform(X_test)
-
-        # Обучить стандартизатор на train
-        scaler = StandardScaler()
-        X_train_fitted = scaler.fit_transform(X_train)
-        X_test_fitted = scaler.transform(X_test)
-
+        
         for name, dt in zip(
             ["X_train", "X_test", "y_train", "y_test"],
             [X_train_fitted, X_test_fitted, y_train, y_test],
